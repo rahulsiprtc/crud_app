@@ -10,10 +10,11 @@ import (
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 type Queryis struct {
+	db *mongo.Database
 }
 
 func (Queryis *Queryis) InsertUser(req request.CreateUserRequest) (*models.User, error) {
@@ -43,58 +44,66 @@ func (Queryis *Queryis) InsertUser(req request.CreateUserRequest) (*models.User,
 	return user, nil
 }
 
-// func (Queryis *Queryis) GetAllUsers(page, limit int64) ([]models.User, error) {
-// 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-// 	defer cancel()
-
-// 	skip := (page - 1) * limit
-// 	opts := options.Find().SetSkip(skip).SetLimit(limit)
-// 	col := models.GetUserCollection()
-
-// 	cursor, err := col.Find(ctx, bson.M{"isDeleted": false}, opts)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	defer cursor.Close(ctx)
-
-//		var users []models.User
-//		for cursor.Next(ctx) {
-//			var u models.User
-//			if err := cursor.Decode(&u); err != nil {
-//				return nil, err
-//			}
-//			users = append(users, u)
-//		}
-//		return users, nil
-//	}
-func (Queryis *Queryis) GetAllUsers(page, limit int64) ([]models.User, int64, error) {
+func (Queryis *Queryis) GetAllUsers(page, limit, minAge int64, nameContains string) ([]models.User, int64, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	col := models.GetUserCollection()
 
-	// Count total users
-	total, err := col.CountDocuments(ctx, bson.M{"isDeleted": false})
-	if err != nil {
-		return nil, 0, err
+	skip := (page - 1) * limit
+
+	matchStage := bson.M{
+		"isDeleted": false,
 	}
 
-	skip := (page - 1) * limit
-	opts := options.Find().SetSkip(skip).SetLimit(limit)
+	if minAge > 0 {
+		matchStage["age"] = bson.M{"$gt": minAge}
+	}
 
-	cursor, err := col.Find(ctx, bson.M{"isDeleted": false}, opts)
+	if nameContains != "" {
+		matchStage["name"] = bson.M{"$regex": nameContains, "$options": "i"}
+	}
+
+	pipeline := mongo.Pipeline{
+		{{Key: "$match", Value: matchStage}},
+		{{
+			Key: "$facet", Value: bson.M{
+				"data": []bson.M{
+					{"$skip": skip},
+					{"$limit": limit},
+				},
+				"totalCount": []bson.M{
+					{"$count": "count"},
+				},
+			},
+		}},
+	}
+
+	cursor, err := col.Aggregate(ctx, pipeline)
 	if err != nil {
 		return nil, 0, err
 	}
 	defer cursor.Close(ctx)
 
-	var users []models.User
-	for cursor.Next(ctx) {
-		var u models.User
-		if err := cursor.Decode(&u); err != nil {
-			return nil, 0, err
-		}
-		users = append(users, u)
+	var results []struct {
+		Data       []models.User `bson:"data"`
+		TotalCount []struct {
+			Count int64 `bson:"count"`
+		} `bson:"totalCount"`
+	}
+
+	if err := cursor.All(ctx, &results); err != nil {
+		return nil, 0, err
+	}
+
+	if len(results) == 0 {
+		return []models.User{}, 0, nil
+	}
+
+	users := results[0].Data
+	total := int64(0)
+	if len(results[0].TotalCount) > 0 {
+		total = results[0].TotalCount[0].Count
 	}
 
 	return users, total, nil
@@ -118,19 +127,32 @@ func (Queryis *Queryis) GetUserByID(id string) (*models.User, error) {
 	return &user, nil
 }
 
-func UpdateUser(id string, req request.UpdateUserRequest) error {
+func (Queryis *Queryis) UpdateUser(id string, req request.UpdateUserRequest) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	objID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
-		return err
-	}
 	col := models.GetUserCollection()
 
+	objID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return "", err
+	}
+
 	update := bson.M{"$set": bson.M{"name": req.Name, "email": req.Email, "age": req.Age}}
-	_, err = col.UpdateOne(ctx, bson.M{"_id": objID, "isDeleted": false}, update)
-	return err
+	result, err := col.UpdateOne(ctx, bson.M{"_id": objID, "isDeleted": false}, update)
+	if err != nil {
+		return "", err
+	}
+
+	if result.MatchedCount == 0 {
+		newUser, err := Queryis.InsertUser(request.CreateUserRequest(req))
+		if err != nil {
+			return "", err
+		}
+		return "User not found. New user created with ID: " + newUser.ID.Hex(), nil
+	}
+
+	return "User successfully updated", nil
 }
 
 func SoftDeleteUser(id string) error {

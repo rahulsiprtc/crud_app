@@ -4,38 +4,26 @@ import (
 	"crud-app/models"
 	"crud-app/mongoDatabase"
 	"crud-app/request"
-
-	"go.mongodb.org/mongo-driver/mongo"
 )
 
 type UserManager struct {
-	collection   *mongo.Collection
 	mongodbQuery *mongoDatabase.Queryis
 }
-
-func NewUserManager(col *mongo.Collection) *UserManager {
-	return &UserManager{collection: col}
-}
-
-// usermgr :=new(UserManager)  add this
 
 func (m *UserManager) CreateUser(req request.CreateUserRequest) (*models.User, error) {
 	return m.mongodbQuery.InsertUser(req)
 }
 
-//	func (m *UserManager) GetAllUsers(page, limit int64) ([]models.User, error) {
-//		return m.mongodbQuery.GetAllUsers(page, limit)
-//	}
-func (m *UserManager) GetAllUsers(page, limit int64) ([]models.User, int64, error) {
-	return m.mongodbQuery.GetAllUsers(page, limit)
+func (m *UserManager) GetAllUsers(page, limit, minAge int64, nameContains string) ([]models.User, int64, error) {
+	return m.mongodbQuery.GetAllUsers(page, limit, minAge, nameContains)
 }
 
 func (m *UserManager) GetUserByID(id string) (*models.User, error) {
 	return m.mongodbQuery.GetUserByID(id)
 }
 
-func (m *UserManager) UpdateUser(id string, req request.UpdateUserRequest) error {
-	return mongoDatabase.UpdateUser(id, req)
+func (m *UserManager) UpdateUser(id string, req request.UpdateUserRequest) (string, error) {
+	return m.mongodbQuery.UpdateUser(id, req)
 }
 
 func (m *UserManager) DeleteUser(id string) error {

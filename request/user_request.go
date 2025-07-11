@@ -11,3 +11,10 @@ type UpdateUserRequest struct {
 	Email string `json:"email" validate:"omitempty,email"`
 	Age   int    `json:"age" validate:"omitempty,gte=18,lte=80"`
 }
+
+type GetAllUsersRequest struct {
+	Page         int64
+	Limit        int64
+	MinAge       int64  `json:"age" validate:"gte=18,lte=80"`
+	NameContains string `json:"name" validate:"required,min=2"`
+}
