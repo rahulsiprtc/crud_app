@@ -29,7 +29,8 @@ func main() {
 	e := echo.New()
 	e.POST("/users", userController.CreateUser)
 	e.GET("/users", userController.GetAllUsers)
-	e.GET("/users/:id", userController.GetUserByID)
+	// removed not used function
+	// e.GET("/users/:id", userController.GetUserByID)
 	e.PUT("/users/:id", userController.UpdateUser)
 	e.DELETE("/users/:id", userController.DeleteUser)
 

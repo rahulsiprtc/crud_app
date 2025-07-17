@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"fmt"
 	"net/http"
 
 	"crud-app/manager"
@@ -35,45 +36,41 @@ func (c *UserController) CreateUser(ctx echo.Context) error {
 	if err != nil {
 		return ctx.JSON(http.StatusInternalServerError, response.UserResponse{Message: err.Error()})
 	}
+	fmt.Print(user)
 
-	return ctx.JSON(http.StatusCreated, response.UserResponse{Message: "User created", Data: user})
+	// return ctx.JSON(http.StatusOK, user, response.UserResponse{Message:"user created" })
+	return ctx.JSON(http.StatusCreated, response.UserResponse{
+		ID:      user.ID,
+		Name:    user.Name,
+		Email:   user.Email,
+		Age:     user.Age,
+		Message: "User created",
+	})
 }
 
+// done
 func (c *UserController) GetAllUsers(ctx echo.Context) error {
 	var req request.PaginationRequest
 
-	if err := ctx.Bind(&req); err != nil || req.Page <= 0 || req.Limit <= 0 {
+	if err := ctx.Bind(&req); err != nil {
+		return ctx.JSON(http.StatusBadRequest, response.UserResponse{Message: "Invalid request", Error: err.Error()})
+	}
+
+	if req.Page <= 0 {
 		req.Page = 1
+	}
+	if req.Limit <= 0 {
 		req.Limit = 10
 	}
 
-	users, total, err := c.manager.GetAllUsers(req.Page, req.Limit, req.MinAge, req.NameContains)
+	// result, err := c.manager.GetAllUsers(req.ID, req.Page, req.Limit, req.MinAge, req.NameContains)
+	result, err := c.manager.GetAllUsers(req)
 
 	if err != nil {
 		return ctx.JSON(http.StatusInternalServerError, response.UserResponse{Message: err.Error()})
 	}
 
-	return ctx.JSON(http.StatusOK, response.UserResponse{
-		Message: "Users fetched",
-		Data: map[string]interface{}{
-			"page":         req.Page,
-			"limit":        req.Limit,
-			"total":        total,
-			"minAge":       req.MinAge,
-			"nameContains": req.NameContains,
-			"users":        users,
-		},
-	})
-}
-
-func (c *UserController) GetUserByID(ctx echo.Context) error {
-	id := ctx.Param("id")
-	user, err := c.manager.GetUserByID(id)
-	if err != nil {
-		return ctx.JSON(http.StatusNotFound, response.UserResponse{Message: err.Error()})
-	}
-
-	return ctx.JSON(http.StatusOK, response.UserResponse{Message: "User fetched", Data: user})
+	return ctx.JSON(http.StatusOK, result)
 }
 
 func (c *UserController) UpdateUser(ctx echo.Context) error {
@@ -100,14 +97,9 @@ func (c *UserController) UpdateUser(ctx echo.Context) error {
 func (c *UserController) DeleteUser(ctx echo.Context) error {
 	id := ctx.Param("id")
 
-	_, err := c.manager.GetUserByID(id)
-	if err != nil {
-		return ctx.JSON(http.StatusNotFound, response.UserResponse{Message: "User already deleted"})
-	}
-
 	if err := c.manager.DeleteUser(id); err != nil {
 		return ctx.JSON(http.StatusInternalServerError, response.UserResponse{Message: err.Error()})
 	}
 
-	return ctx.JSON(http.StatusOK, response.UserResponse{Message: "User soft-deleted"})
+	return ctx.JSON(http.StatusOK, response.UserResponse{Message: "User deleted"})
 }
